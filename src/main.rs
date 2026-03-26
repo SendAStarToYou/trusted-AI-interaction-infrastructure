@@ -1,0 +1,119 @@
+//! IS6200 Rust 版
+
+mod config;
+mod contract;
+mod deploy;
+mod ipfs;
+mod tlsn;
+mod manage_whitelist;
+mod submit_content;
+
+use config::Config;
+use dialoguer::Select;
+use std::process;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    println!("╔═══════════════════════════════════════════════════════════╗");
+    println!("║  IS6200 - TLS Notary + Qwen + Multisig (Production)     ║");
+    println!("╚═══════════════════════════════════════════════════════════╝");
+
+    let config = match Config::load() {
+        Ok(c) => { println!("✅ 配置加载成功\n"); c }
+        Err(e) => {
+            println!("❌ 配置错误: {}\n请创建 .env", e);
+            println!("\n需要的环境变量:");
+            println!("  - INFURA_URL, PRIVATE_KEY, CONTRACT_ADDRESS");
+            println!("  - DASHSCOPE_API_KEY, DASHSCOPE_BASE_URL, DASHSCOPE_MODEL");
+            println!("  - PINATA_API_KEY, PINATA_SECRET");
+            println!("  - ADMIN_ADDRESSES, ADMIN1/2/3_PRIVATE_KEY");
+            println!("  - TLSN_NOTARY_HOST, TLSN_NOTARY_PORT");
+            process::exit(1);
+        }
+    };
+
+    // 检查命令行参数
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() > 1 {
+        match args[1].as_str() {
+            "--submit" | "-s" => {
+                if args.len() < 3 {
+                    println!("用法: cargo run -- --submit \"你的提示词\"");
+                    process::exit(1);
+                }
+                let prompt = args[2..].join(" ");
+                println!("📝 提示词: {}\n", prompt);
+                let _ = submit_content::submit_content(&config).await;
+                process::exit(0);
+            }
+            "--test-proof" | "-t" => {
+                let domain = args.get(2).map(|s| s.as_str()).unwrap_or("dashscope.aliyuncs.com");
+                let prompt = args.get(3).map(|s| s.as_str()).unwrap_or("Hello");
+                let response = args.get(4).map(|s| s.as_str()).unwrap_or("Hi there!");
+                println!("🧪 TLSN 证明测试: {} | {} | {}\n", domain, prompt, response);
+                let proof = tlsn::create_simple_proof(domain, prompt, response);
+                println!("✅ 生成的证明长度: {} bytes", proof.len());
+                println!("   前64字节: {}", &proof[..proof.len().min(64)].iter().map(|b| format!("{:02x}", b)).collect::<String>());
+                process::exit(0);
+            }
+            "--help" | "-h" => {
+                println!("用法:");
+                println!("  cargo run                    # 交互模式");
+                println!("  cargo run -- --submit \"提示词\"   # 提交内容 (非交互)");
+                println!("  cargo run -- --test-proof    # 测试 TLSN 证明");
+                println!("  cargo run -- -h              # 显示帮助");
+                process::exit(0);
+            }
+            _ => {
+                println!("未知参数: {}", args[1]);
+                println!("使用 cargo run -- -h 查看帮助");
+                process::exit(1);
+            }
+        }
+    }
+
+    loop {
+        let items = vec![
+            "📦 部署合约",
+            "📝 创建白名单操作 (添加/移除域名)",
+            "✍️  管理员签名操作",
+            "⚡ 执行白名单操作",
+            "🤖 提交千问内容上链 (TLSN)",
+            "🔍 验证已有 IPFS 内容",
+            "🔐 生成 TLSN 证明 (测试)",
+            "❌ 退出",
+        ];
+
+        let sel = Select::new().with_prompt("请选择操作").items(&items).default(0).interact().unwrap_or(7);
+
+        match sel {
+            0 => { println!("\n🚀 部署...\n"); let _ = deploy::deploy_contract(&config).await; }
+            1 => { println!(); let _ = manage_whitelist::create_operation(&config).await; }
+            2 => { println!(); let _ = manage_whitelist::sign_operation(&config).await; }
+            3 => { println!(); let _ = manage_whitelist::execute_operation(&config).await; }
+            4 => { println!(); let _ = submit_content::submit_content(&config).await; }
+            5 => {
+                println!();
+                let cid = dialoguer::Input::<String>::new().with_prompt("输入 IPFS CID").interact().unwrap_or_default();
+                if !cid.is_empty() { let _ = submit_content::verify_existing(&config, &cid).await; }
+            }
+            6 => {
+                println!();
+                println!("🧪 TLSN 证明测试:");
+                let domain = dialoguer::Input::<String>::new()
+                    .with_prompt("输入域名").default("dashscope.aliyuncs.com".into()).interact().unwrap();
+                let prompt = dialoguer::Input::<String>::new()
+                    .with_prompt("输入提示词").default("Hello".into()).interact().unwrap();
+                let response = dialoguer::Input::<String>::new()
+                    .with_prompt("输入响应").default("Hi there!".into()).interact().unwrap();
+
+                let proof = tlsn::create_simple_proof(&domain, &prompt, &response);
+                println!("\n✅ 生成的证明长度: {} bytes", proof.len());
+                println!("   前64字节: {}", &proof[..proof.len().min(64)].iter().map(|b| format!("{:02x}", b)).collect::<String>());
+            }
+            7 => { println!("\n👋 再见!"); process::exit(0); }
+            _ => {}
+        }
+        println!();
+    }
+}

@@ -1,0 +1,39 @@
+# Build
+/target
+Cargo.lock
+
+# Environment
+.env
+.env.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# ABI (regenerate each time)
+abi/*.json
+!abi/.gitkeep
+
+# Keys/Secrets (NEVER commit)
+*.pem
+*.key
+secrets.txt
+
+# TLSN Library (external dependency)
+tlsn-lib/
+
+# Node modules (contracts)
+contracts/node_modules/
+contracts/package-lock.json
+contracts/artifacts/
+contracts/cache/
+contracts/typechain-types/
+
+# Deployment
+contracts/deployment-address.txt
