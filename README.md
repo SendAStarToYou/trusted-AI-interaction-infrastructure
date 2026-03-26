@@ -1,119 +1,309 @@
-# IS6200 Rust 版 - TLS Notary + 多签白名单 + 阿里通义千问
+# IS6200 - 去中心化 AI 交流组件
 
-基于 Rust 重构的区块链课程项目，实现了 TLS Notary 公证、3/2 多签白名单管理和阿里通义千问 AI 集成。
+一个基于区块链的可信 AI 对话内容验证系统，通过 TLS Notary 证明和以太坊智能合约确保 AI 交互的真实性和完整性。
 
-## 功能特性
+## 项目目标
 
-- **TLS Notary**: 生成内容真实性证明
-- **多签白名单**: 3/2 多签机制管理 AI 服务商域名
-- **阿里千问**: OpenAI 兼容接口，无缝切换
-- **IPFS 存储**: 去中心化内容存储
-- **链上验证**: 以太坊智能合约验证
+本项目旨在实现一个**可靠的去中心化 AI 交流组件**，解决以下核心问题：
 
-## 快速开始
+- **内容可信**: 通过 TLS Notary 技术验证 AI 服务商返回内容的真实性
+- **透明可验证**: 所有内容提交记录上链，可公开审计
+- **去中心化治理**: 域名白名单由多个管理员共同管理，防止单点控制
 
-### 1. 安装 Rust
+---
 
-```bash
-# 使用 rustup 安装
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-source $HOME/.cargo/env
-```
+## 角色说明
 
-### 2. 配置环境
+| 角色 | 权限 | 说明 |
+|------|------|------|
+| **创建者 (Deployer)** | 部署合约、设置初始管理员 | 合约部署者，拥有合约初始控制权 |
+| **管理员 (Admin)** | 签名白名单操作、执行操作 | 3/2 多签机制，需至少2人同意才能修改白名单 |
+| **普通用户 (User)** | 提交内容、验证证明 | 可调用内容验证接口，将 AI 内容上链 |
 
-```bash
-# 复制环境变量文件
-cp .env.example .env
-
-# 编辑 .env 填入你的配置
-# - INFURA_URL: Sepolia 测试网 URL
-# - PRIVATE_KEY: 测试网私钥
-# - DASHSCOPE_API_KEY: 阿里千问 API Key
-# - PINATA_API_KEY/SECRET: IPFS 上传密钥
-# - ADMIN_ADDRESSES: 3个管理员地址 (逗号分隔)
-# - ADMIN1/2/3_PRIVATE_KEY: 管理员私钥
-```
-
-### 3. 编译运行
-
-```bash
-# 编译
-cargo build --release
-
-# 运行
-cargo run --release
-```
+---
 
 ## 使用流程
 
-### 步骤 1: 部署合约
+### 1. 创建者 - 部署阶段
 
-1. 运行程序，选择 "部署合约"
-2. 等待编译和部署完成
-3. 复制显示的合约地址到 `.env` 的 `CONTRACT_ADDRESS`
+```
+┌─────────────────────────────────────────────────────────────┐
+│  1. 编译并运行程序                                           │
+│     cargo build && cargo run                                │
+│                                                              │
+│  2. 选择 "部署合约"                                          │
+│     - 部署 TLSNContentVerifierWithMultisig.sol             │
+│     - 指定3个管理员地址                                       │
+│                                                              │
+│  3. 保存合约地址到 .env                                       │
+│     CONTRACT_ADDRESS=0x...                                   │
+└─────────────────────────────────────────────────────────────┘
+```
 
-### 步骤 2: 添加域名到白名单
+### 2. 管理员 - 白名单管理
 
-1. 选择 "创建白名单操作"
-2. 输入域名: `dashscope.aliyuncs.com`
-3. 选择 "添加域名到白名单"
-4. 管理员 1、2 分别选择 "管理员签名操作"
-5. 任意管理员选择 "执行白名单操作"
+```
+┌─────────────────────────────────────────────────────────────┐
+│  添加域名 (需3/2多签):                                       │
+│                                                              │
+│  1. 管理员A: 创建白名单操作                                   │
+│     - 选择 "创建白名单操作"                                   │
+│     - 输入域名: dashscope.aliyuncs.com                       │
+│     - 选择 "添加域名"                                         │
+│                                                              │
+│  2. 管理员B: 签名同意                                        │
+│     - 选择 "管理员签名操作"                                   │
+│                                                              │
+│  3. 管理员C (或B): 执行操作                                  │
+│     - 选择 "执行白名单操作"                                   │
+│     - 域名添加到链上白名单                                     │
+└─────────────────────────────────────────────────────────────┘
+```
 
-### 步骤 3: 提交内容上链
+### 3. 普通用户 - 内容提交
 
-1. 选择 "提交千问内容上链"
-2. 输入提示词
-3. 等待 AI 生成、内容证明、IPFS 上传和链上验证
+```
+┌─────────────────────────────────────────────────────────────┐
+│  提交 AI 内容上链:                                           │
+│                                                              │
+│  1. 输入提示词                                               │
+│     (系统自动添加安全头部)                                     │
+│                                                              │
+│  2. 等待 AI 生成回复                                         │
+│     - 调用阿里通义千问 API                                   │
+│                                                              │
+│  3. 生成 TLS Notary 证明                                      │
+│     - 建立与 AI 服务商的 TLS 连接                            │
+│     - 提取证书、握手信息、内容哈希                            │
+│                                                              │
+│  4. 上传 IPFS                                                │
+│     - 内容存储到去中心化网络                                  │
+│                                                              │
+│  5. 链上验证                                                 │
+│     - 合约验证证明有效性                                      │
+│     - 验证提示词头部匹配                                      │
+│     - 记录内容哈希和时间戳                                    │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 技术方案详解
+
+### 模块架构
+
+```
+┌────────────────────────────────────────────────────────────────────┐
+│                         用户端 (Rust)                              │
+├────────────────────────────────────────────────────────────────────┤
+│  main.rs                                                           │
+│    ├── config.rs       - 环境变量加载                              │
+│    ├── ipfs.rs         - Pinata IPFS 集成                          │
+│    ├── tlsn.rs         - TLS Notary 证明生成                       │
+│    ├── submit_content.rs - AI 内容提交流程                          │
+│    ├── manage_whitelist.rs - 白名单多签管理                         │
+│    ├── deploy.rs       - 合约部署                                   │
+│    └── contract.rs     - 合约交互接口                               │
+└────────────────────────────────────────────────────────────────────┘
+                               │
+                               ▼
+┌────────────────────────────────────────────────────────────────────┐
+│                      区块链层 (Ethereum)                           │
+├────────────────────────────────────────────────────────────────────┤
+│  TLSNContentVerifierWithMultisig.sol                              │
+│    ├── 域名白名单管理 (多签)                                        │
+│    ├── TLSN 证明验证                                               │
+│    └── 内容哈希存储                                               │
+└────────────────────────────────────────────────────────────────────┘
+```
+
+### 1. TLS Notary 证明模块 (`src/tlsn.rs`)
+
+**技术方案**:
+- 使用 `native-tls` 库建立与 AI 服务商的真实 TLS 连接
+- 提取 TLS 握手信息：ClientHello、ServerRandom、证书
+- 生成内容哈希：`keccak256(prompt + response)`
+
+**证明结构**:
+```rust
+struct TlsnProof {
+    proof_type: [u8; 32],           // keccak256("TLSN_PROOF_V1")
+    timestamp: u64,                  // Unix 时间戳
+    session_id: [u8; 32],            // 握手哈希作为会话ID
+    client_hello_hash: [u8; 32],    // ClientHello 哈希
+    server_certificate: Vec<u8>,     // DER 格式证书
+    server_public_key_hash: [u8; 32], // 公钥哈希
+    handshake_transcript_hash: [u8; 32], // 完整握手哈希
+    application_data_hash: [u8; 32],    // AI 内容哈希
+    client_random: [u8; 32],         // TLS 客户端随机数
+    server_random: [u8; 32],         // TLS 服务器随机数
+    notary_signature: Vec<u8>,       // Notary 签名
+    notary_pubkey: [u8; 20],        // Notary 地址
+}
+```
+
+**序列化格式** (Solidity bytes memory):
+```
+[offset 0-31]   数据长度 (uint32)
+[offset 32-63]  proof_type (32 bytes)
+[offset 64-95]  timestamp (32 bytes)
+[offset 96-127] session_id (32 bytes)
+...
+[offset 32+]    所有字段紧凑排列
+```
+
+### 2. 智能合约 (`contracts/TLSNContentVerifierWithMultisig.sol`)
+
+**技术方案**:
+- **Solidity 0.8.19**
+- **多签机制**: 3/2 签名阈值，需至少 2 个管理员同意
+- **白名单管理**: 域名哈希映射，add/remove 操作需多签
+- **证明验证**: 验证 proof_type、时间戳有效性、签名存在
+
+**核心函数**:
+
+```solidity
+// 白名单管理
+function createPendingOperation(string memory _domain, bool _isAdd)
+    external onlyAdmin returns (uint256 opId)
+
+function signOperation(uint256 _opId) external onlyAdmin
+
+function executeOperation(uint256 _opId) external onlyAdmin
+
+// 内容验证
+function verifyAndStoreContent(
+    bytes32 _contentHash,
+    string calldata _ipfsCid,
+    string calldata _requestId,
+    string calldata _fullPrompt,
+    bytes memory _tlsnProof,
+    bytes32 _expectedContentHash,
+    bytes32 _domainHash
+) external
+```
+
+### 3. IPFS 存储 (`src/ipfs.rs`)
+
+**技术方案**:
+- 使用 Pinata API 进行上传
+- JSON 格式存储元数据
+
+**存储结构**:
+```rust
+struct IpfsData {
+    prompt_header: String,      // 提示词安全头部
+    full_prompt: String,        // 完整提示词
+    ai_content: String,         // AI 回复内容
+    request_id: String,         // API 请求ID
+    tlsn_proof: String,         // TLSN 证明 (hex)
+    uploader: String,           // 上传者地址
+    timestamp: u64,             // 上传时间
+}
+```
+
+### 4. 合约交互 (`src/contract.rs`)
+
+**技术方案**:
+- 使用 `ethers-rs 2.0` 与以太坊交互
+- `SignerMiddleware` 进行交易签名
+- 动态加载合约 ABI
+
+### 5. 配置管理 (`src/config.rs`)
+
+**环境变量**:
+| 变量 | 说明 |
+|------|------|
+| INFURA_URL | Sepolia RPC 端点 |
+| CONTRACT_ADDRESS | 部署的合约地址 |
+| PRIVATE_KEY | 用户钱包私钥 |
+| ADMIN1/2/3_PRIVATE_KEY | 管理员私钥 |
+| DASHSCOPE_API_KEY | 阿里千问 API Key |
+| PINATA_API_KEY/SECRET | IPFS 上传密钥 |
+
+---
+
+## 快速开始
+
+### 1. 环境配置
+
+```bash
+# 安装 Rust
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+
+# 安装 Node.js (用于合约)
+nvm install 20
+
+# 安装项目依赖
+cd IS6200-Rust
+cargo build
+cd contracts && npm install
+```
+
+### 2. 配置环境变量
+
+```bash
+cp .env.example .env
+# 编辑 .env 填入配置
+```
+
+### 3. 运行
+
+```bash
+# 启动程序
+cargo run
+```
+
+---
 
 ## 项目结构
 
 ```
 IS6200-Rust/
-├── .env.example           # 环境变量示例
-├── Cargo.toml             # Rust 依赖
+├── .env.example           # 环境变量模板
+├── Cargo.toml             # Rust 依赖配置
 ├── README.md              # 本文件
 ├── contracts/
-│   └── TLSNContentVerifierWithMultisig.sol  # 智能合约
-├── abi/                   # 编译后的 ABI (自动生成)
+│   ├── contracts/
+│   │   └── TLSNContentVerifierWithMultisig.sol  # 智能合约
+│   ├── hardhat.config.ts  # Hardhat 配置
+│   └── scripts/           # 部署脚本
+├── abi/                   # 合约 ABI (自动生成)
 └── src/
-    ├── main.rs            # 入口
-    ├── config.rs          # 配置
+    ├── main.rs            # 程序入口
+    ├── config.rs          # 配置管理
     ├── contract.rs        # 合约交互
-    ├── ipfs.rs            # IPFS 上传
-    ├── deploy.rs          # 部署
-    ├── manage_whitelist.rs # 白名单管理
-    └── submit_content.rs  # 千问 + TLSN
+    ├── ipfs.rs            # IPFS 集成
+    ├── tlsn.rs            # TLS Notary
+    ├── deploy.rs          # 合约部署
+    ├── manage_whitelist.rs # 白名单多签
+    └── submit_content.rs  # 内容提交
 ```
+
+---
 
 ## 技术栈
 
-- **语言**: Rust
-- **以太坊**: ethers-rs 2.0
-- **AI**: 阿里通义千问 (OpenAI 兼容)
-- **存储**: IPFS (Pinata)
-- **异步**: tokio
-- **智能合约**: Solidity
+| 层级 | 技术 |
+|------|------|
+| **后端** | Rust, tokio (异步 runtime) |
+| **区块链** | Ethereum (Sepolia), ethers-rs 2.0 |
+| **智能合约** | Solidity 0.8.19 |
+| **AI** | 阿里通义千问 (OpenAI 兼容 API) |
+| **存储** | IPFS (Pinata) |
+| **TLS** | native-tls |
+| **工具** | Hardhat, Cargo |
 
-## 配置说明
+---
 
-| 变量 | 说明 | 示例 |
-|------|------|------|
-| INFURA_URL | Sepolia RPC URL | https://sepolia.infura.io/v3/xxx |
-| CONTRACT_ADDRESS | 部署后获得的合约地址 | 0x1234... |
-| CHAIN_ID | 链 ID (Sepolia=11155111) | 11155111 |
-| DASHSCOPE_API_KEY | 阿里云 DashScope API Key | sk-xxx |
-| DASHSCOPE_MODEL | 千问模型 | qwen-turbo |
-| PINATA_API_KEY | Pinata API Key | xxx |
-| ADMIN_ADDRESSES | 3个管理员地址 (逗号分隔) | 0xAddr1,0xAddr2,0xAddr3 |
+## 安全说明
 
-## 注意事项
+1. **私钥安全**: 私钥存储在 .env，切勿提交到版本控制
+2. **测试优先**: 建议在 Sepolia 测试网验证后再部署主网
+3. **TLSN 实现**: 当前为简化版本，签名为模拟生成
+4. **API 配额**: 阿里千问和 Pinata 有免费额度限制
 
-1. 私钥安全: 不要提交到 Git，添加到 .gitignore
-2. 测试网: 建议先在 Sepolia 测试网验证
-3. TLS Notary: 当前为简化实现，仅生成哈希证明
-4. API 额度: 阿里千问和 Pinata 有免费额度限制
+---
 
 ## 许可证
 
