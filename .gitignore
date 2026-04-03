@@ -16,9 +16,9 @@ Cargo.lock
 .DS_Store
 Thumbs.db
 
-# ABI (regenerate each time)
-abi/*.json
-!abi/.gitkeep
+# ABI files - 保留以便开箱即用
+# abi/*.json
+# !abi/.gitkeep
 
 # Keys/Secrets (NEVER commit)
 *.pem

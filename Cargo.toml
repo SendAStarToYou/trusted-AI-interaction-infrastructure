@@ -7,7 +7,7 @@ description = "TLS Notary + Multisig Whitelist + Qwen AI Integration"
 
 [dependencies]
 # 核心异步运行时
-tokio = { version = "1.40", features = ["full"] }
+tokio = { workspace = true, features = ["full"] }
 
 # 以太坊交互 (ethers-rs 2.0)
 ethers = { version = "2.0", features = ["default", "legacy"] }
@@ -22,29 +22,195 @@ dotenv = "0.15"
 reqwest = { version = "0.12", features = ["json", "multipart", "rustls-tls"], default-features = false }
 
 # 序列化
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
 
 # 命令行交互
 dialoguer = "0.11"
 
 # 日志
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
 
 # 工具类
-hex = "0.4"
-thiserror = "1.0"
-async-trait = "0.1"
-bytes = "1.0"
+hex = { workspace = true }
+bincode = { workspace = true }
+thiserror = { workspace = true }
+async-trait = { workspace = true }
+bytes = { workspace = true }
 
 # TLS 连接
 native-tls = "0.2"
 
-[patch.crates-io]
-# Patching tlsn components to use local version for debugging
-# tlsn-core = { path = "./tlsn-lib/crates/core" }
+# TLSN本地依赖
+tlsn = { workspace = true }
+tlsn-core = { workspace = true }
+
+# 额外依赖（来自tlsn）
+anyhow = { workspace = true }
+k256 = { workspace = true, features = ["ecdsa"] }
+sha2 = { workspace = true }
+tokio-util = { workspace = true, features = ["compat"] }
+hyper = { workspace = true, features = ["full"] }
+hyper-util = { workspace = true }
+http-body-util = { workspace = true }
+atty = "0.2"
 
 [workspace]
 members = ["."]
-exclude = ["tlsn-lib"]
+resolver = "2"
+
+[workspace.dependencies]
+# TLSN internal crates
+tls-server-fixture = { path = "./tlsn-lib/crates/tls/server-fixture" }
+tlsn-attestation = { path = "./tlsn-lib/crates/attestation" }
+tlsn-cipher = { path = "./tlsn-lib/crates/components/cipher" }
+tlsn-core = { path = "./tlsn-lib/crates/core" }
+tlsn-data-fixtures = { path = "./tlsn-lib/crates/data-fixtures" }
+tlsn-deap = { path = "./tlsn-lib/crates/components/deap" }
+tlsn-formats = { path = "./tlsn-lib/crates/formats" }
+tlsn-hmac-sha256 = { path = "./tlsn-lib/crates/components/hmac-sha256" }
+tlsn-key-exchange = { path = "./tlsn-lib/crates/components/key-exchange" }
+tlsn-mpc-tls = { path = "./tlsn-lib/crates/mpc-tls" }
+tlsn-mux = { git = "https://github.com/tlsnotary/tlsn-utils", rev = "d9facb6" }
+tlsn-server-fixture = { path = "./tlsn-lib/crates/server-fixture/server" }
+tlsn-server-fixture-certs = { path = "./tlsn-lib/crates/server-fixture/certs" }
+tlsn-tls-backend = { path = "./tlsn-lib/crates/tls/backend" }
+tlsn-tls-client = { path = "./tlsn-lib/crates/tls/client" }
+tlsn-tls-client-async = { path = "./tlsn-lib/crates/tls/client-async" }
+tlsn-tls-core = { path = "./tlsn-lib/crates/tls/core" }
+tlsn-utils = { git = "https://github.com/tlsnotary/tlsn-utils", rev = "6168663" }
+tlsn-harness-core = { path = "./tlsn-lib/crates/harness/core" }
+tlsn-harness-executor = { path = "./tlsn-lib/crates/harness/executor" }
+tlsn-harness-runner = { path = "./tlsn-lib/crates/harness/runner" }
+tlsn-wasm = { path = "./tlsn-lib/crates/wasm" }
+tlsn = { path = "./tlsn-lib/crates/tlsn" }
+
+# MPZ dependencies
+mpz-circuits = { git = "https://github.com/privacy-ethereum/mpz", tag = "v0.1.0-alpha.5" }
+mpz-circuits-data = { git = "https://github.com/privacy-ethereum/mpz", tag = "v0.1.0-alpha.5" }
+mpz-memory-core = { git = "https://github.com/privacy-ethereum/mpz", tag = "v0.1.0-alpha.5" }
+mpz-common = { git = "https://github.com/privacy-ethereum/mpz", tag = "v0.1.0-alpha.5" }
+mpz-core = { git = "https://github.com/privacy-ethereum/mpz", tag = "v0.1.0-alpha.5" }
+mpz-vm-core = { git = "https://github.com/privacy-ethereum/mpz", tag = "v0.1.0-alpha.5" }
+mpz-garble = { git = "https://github.com/privacy-ethereum/mpz", tag = "v0.1.0-alpha.5" }
+mpz-garble-core = { git = "https://github.com/privacy-ethereum/mpz", tag = "v0.1.0-alpha.5" }
+mpz-ole = { git = "https://github.com/privacy-ethereum/mpz", tag = "v0.1.0-alpha.5" }
+mpz-ot = { git = "https://github.com/privacy-ethereum/mpz", tag = "v0.1.0-alpha.5" }
+mpz-share-conversion = { git = "https://github.com/privacy-ethereum/mpz", tag = "v0.1.0-alpha.5" }
+mpz-fields = { git = "https://github.com/privacy-ethereum/mpz", tag = "v0.1.0-alpha.5" }
+mpz-zk = { git = "https://github.com/privacy-ethereum/mpz", tag = "v0.1.0-alpha.5" }
+mpz-hash = { git = "https://github.com/privacy-ethereum/mpz", tag = "v0.1.0-alpha.5" }
+mpz-ideal-vm = { git = "https://github.com/privacy-ethereum/mpz", tag = "v0.1.0-alpha.5" }
+
+# TLSN utils
+rangeset = { version = "0.4" }
+serio = { version = "0.2" }
+spansy = { git = "https://github.com/tlsnotary/tlsn-utils", rev = "6f1a934" }
+websocket-relay = { git = "https://github.com/tlsnotary/tlsn-utils", rev = "6f1a934" }
+
+# Crypto
+aead = { version = "0.4" }
+aes = { version = "0.8" }
+aes-gcm = { version = "0.9" }
+blake3 = { version = "1.5" }
+cipher = { version = "0.4" }
+ctr = { version = "0.9" }
+digest = { version = "0.10" }
+elliptic-curve = { version = "0.13" }
+ghash = { version = "0.5" }
+hmac = { version = "0.12" }
+k256 = { version = "0.13" }
+p256 = { version = "0.13" }
+ring = { version = "0.17" }
+rs_merkle = { git = "https://github.com/tlsnotary/rs-merkle.git", rev = "85f3e82" }
+sha2 = { version = "0.10" }
+signature = { version = "2.2" }
+tiny-keccak = { version = "2.0" }
+zeroize = { version = "1.8" }
+
+# Async / Runtime
+anyhow = { version = "1.0" }
+async_io_stream = { version = "0.3" }
+async-trait = { version = "0.1" }
+futures = { version = "0.3" }
+futures-rustls = { version = "0.25" }
+pin-project-lite = { version = "0.2" }
+pollster = { version = "0.4" }
+tokio = { version = "1.38" }
+tokio-util = { version = "0.7" }
+
+# Serialization
+bcs = { version = "0.1" }
+bincode = { version = "1.3" }
+serde = { version = "1.0" }
+serde_json = { version = "1.0" }
+toml = { version = "0.8" }
+
+# HTTP / Web
+axum = { version = "0.8" }
+http-body-util = { version = "0.1" }
+hyper = { version = "1.1" }
+hyper-util = { version = "0.1" }
+ipnet = { version = "2.11" }
+tower = { version = "0.5" }
+tower-http = { version = "0.5" }
+tower-service = { version = "0.3" }
+
+# TLS / WebPKI
+rustls = { version = "0.21" }
+rustls-pemfile = { version = "1.0" }
+rustls-webpki = { version = "0.103" }
+rustls-pki-types = { version = "1.12" }
+sct = { version = "0.7" }
+webpki-roots = { version = "1.0" }
+webpki-root-certs = { version = "1.0" }
+
+# Utils
+bon = { version = "3.6" }
+bytes = { version = "1.4" }
+cfg-if = { version = "1" }
+derive_builder = { version = "0.12" }
+enum-try-as-inner = { version = "0.1" }
+generic-array = { version = "0.14" }
+hex = { version = "0.4" }
+inventory = { version = "0.3" }
+itybity = { version = "0.2" }
+once_cell = { version = "1.19" }
+opaque-debug = { version = "0.3" }
+rand = { version = "0.9" }
+rand_chacha = { version = "0.9" }
+rand_core = { version = "0.9" }
+rand06-compat = { version = "0.1" }
+rayon = { version = "1.10" }
+regex = { version = "1.10" }
+semver = { version = "1.0" }
+thiserror = { version = "1.0" }
+
+# Logging
+tracing = { version = "0.1" }
+tracing-subscriber = { version = "0.3" }
+env_logger = { version = "0.10" }
+log = { version = "0.4" }
+
+# WASM
+js-sys = { version = "0.3" }
+wasm-bindgen = { version = "0.2" }
+wasm-bindgen-futures = { version = "0.4" }
+web-spawn = { version = "0.2" }
+web-time = { version = "0.2" }
+ws_stream_wasm = { version = "0.7.5" }
+
+# Testing / Dev
+criterion = { version = "0.5" }
+rstest = { version = "0.17" }
+clap = { version = "4.5" }
+
+# Time
+chrono = { version = "0.4" }
+
+# Browser automation
+chromiumoxide = { version = "0.7" }
+
+[workspace.lints.rust]
+[workspace.lints.clippy]

@@ -3,14 +3,11 @@
 mod config;
 mod contract;
 mod deploy;
-mod diagnose_ecdsa;
-mod diagnose_simple;
 mod ipfs;
 mod notary;
 mod tlsn_ai;
 mod manage_whitelist;
 mod submit_content;
-mod query_chain;
 mod ai_api_config;
 
 use config::Config;
@@ -65,21 +62,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let _ = submit_content::submit_content(&config, Some(&prompt)).await;
                 process::exit(0);
             }
-            "--query" | "-q" => {
-                println!("📊 查询链上信息...\n");
-                let _ = query_chain::query_chain_info(&config).await;
-                process::exit(0);
-            }
-            "--diagnose" | "-d" => {
-                if args.len() < 3 {
-                    println!("用法: cargo run -- --diagnose \"你的提示词\"");
-                    process::exit(1);
-                }
-                let prompt = args[2..].join(" ");
-                println!("🔍 ECDSA 诊断: {}\n", prompt);
-                let _ = diagnose_ecdsa(&config, &prompt).await;
-                process::exit(0);
-            }
             "--test-proof" | "-t" => {
                 let domain = args.get(2).map(|s| s.as_str()).unwrap_or("dashscope.aliyuncs.com");
                 let prompt = args.get(3).map(|s| s.as_str()).unwrap_or("Hello");
@@ -92,12 +74,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             "--help" | "-h" => {
                 println!("用法:");
-                println!("  cargo run                       # 交互模式");
-                println!("  cargo run -- --submit \"提示词\"    # 提交内容 (TLSN验证)");
-                println!("  cargo run -- --query              # 查询链上信息");
-                println!("  cargo run -- --diagnose \"提示词\"   # 诊断 TLSN 验证");
-                println!("  cargo run -- --test-proof       # 测试 TLSN 证明");
-                println!("  cargo run -- -h                 # 显示帮助");
+                println!("  cargo run                    # 交互模式");
+                println!("  cargo run -- --submit \"提示词\"   # 提交内容 (非交互)");
+                println!("  cargo run -- --test-proof    # 测试 TLSN 证明");
+                println!("  cargo run -- -h              # 显示帮助");
                 process::exit(0);
             }
             _ => {
@@ -116,12 +96,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "⚡ 执行白名单操作",
             "🤖 提交千问内容上链 (分布式TLSN)",
             "🔍 验证已有 IPFS 内容",
-            "📊 查询链上信息",
-            "🔧 生成 TLSN 证明 (测试)",
+            "🔐 生成 TLSN 证明 (测试)",
             "❌ 退出",
         ];
 
-        let sel = Select::new().with_prompt("请选择操作").items(&items).default(0).interact().unwrap_or(6);
+        let sel = Select::new().with_prompt("请选择操作").items(&items).default(0).interact().unwrap_or(7);
 
         match sel {
             0 => { println!("\n🚀 部署...\n"); let _ = deploy::deploy_contract(&config).await; }
@@ -134,8 +113,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let cid = dialoguer::Input::<String>::new().with_prompt("输入 IPFS CID").interact().unwrap_or_default();
                 if !cid.is_empty() { let _ = submit_content::verify_existing(&config, &cid).await; }
             }
-            6 => { println!(); let _ = query_chain::query_chain_info(&config).await; }
-            7 => {
+            6 => {
                 println!();
                 println!("🧪 TLSN 证明测试:");
                 let domain = dialoguer::Input::<String>::new()
@@ -153,36 +131,5 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             _ => {}
         }
         println!();
-    }
-}
-
-/// 诊断 ECDSA 验证
-async fn diagnose_ecdsa(config: &Config, prompt: &str) {
-    use crate::tlsn_ai;
-    use crate::diagnose_ecdsa::diagnose_ecdsa_validation;
-
-    println!("🔍 启动 TLSN 流程生成 Proof...");
-
-    let notary_host = std::env::var("TLSN_NOTARY_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
-    let notary_port = std::env::var("TLSN_NOTARY_PORT")
-        .unwrap_or_else(|_| "7040".to_string())
-        .parse::<u16>()
-        .unwrap_or(7040);
-
-    match tlsn_ai::request_ai_with_attestation(
-        &notary_host,
-        notary_port,
-        &config.qwen_api_key,
-        prompt,
-    ).await {
-        Ok(result) => {
-            println!("✅ TLSN 证明生成完成 ({} bytes)", result.contract_proof.len());
-            if let Err(e) = diagnose_ecdsa_validation(config, &result.contract_proof).await {
-                println!("❌ 诊断失败: {}", e);
-            }
-        }
-        Err(e) => {
-            println!("❌ TLSN 证明生成失败: {}", e);
-        }
     }
 }

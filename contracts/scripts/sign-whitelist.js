@@ -1,11 +1,9 @@
 import "dotenv/config";
 
 async function main() {
-  console.log("Sign: Signing and executing whitelist operation...");
+  console.log("Signing and executing whitelist operation...");
 
   const { ethers } = await import("ethers");
-
-  const deployerKey = process.env.PRIVATE_KEY;
 
   const provider = new ethers.JsonRpcProvider(process.env.INFURA_URL);
   const contractAddress = process.env.CONTRACT_ADDRESS;
@@ -20,37 +18,40 @@ async function main() {
 
   const contract = new ethers.Contract(contractAddress, artifact.abi, provider);
 
-  // 操作 ID 1
-  const operationId = 1;
+  // 操作 ID 0 (第一个操作)
+  const operationId = 0;
 
-  // 使用部署者签名（它是唯一的管理员）
-  const wallet = new ethers.Wallet(deployerKey, provider);
-  const contractWithSigner = contract.connect(wallet);
+  // 使用 3 个不同的管理员密钥签名
+  const adminKeys = [
+    process.env.PRIVATE_KEY,
+    process.env.ADMIN1_PRIVATE_KEY || process.env.PRIVATE_KEY,
+    process.env.ADMIN2_PRIVATE_KEY || process.env.PRIVATE_KEY,
+  ];
 
-  try {
-    const tx1 = await contractWithSigner.signOperation(operationId);
-    await tx1.wait();
-    console.log("✅ Sign 1:", tx1.hash);
-  } catch (e) {
-    console.log("Sign 1 error:", e.message.slice(0, 100));
-  }
-
-  try {
-    const tx2 = await contractWithSigner.signOperation(operationId);
-    await tx2.wait();
-    console.log("✅ Sign 2:", tx2.hash);
-  } catch (e) {
-    console.log("Sign 2 error:", e.message.slice(0, 100));
+  // 第一轮签名
+  console.log("Round 1 signatures:");
+  for (let i = 0; i < 2; i++) {
+    const wallet = new ethers.Wallet(adminKeys[i], provider);
+    const contractWithSigner = contract.connect(wallet);
+    try {
+      const tx = await contractWithSigner.signOperation(operationId);
+      await tx.wait();
+      console.log(`  ✅ Admin ${i + 1} signed: ${tx.hash.slice(0, 10)}...`);
+    } catch (e) {
+      console.log(`  ❌ Admin ${i + 1} error:`, e.message.slice(0, 80));
+    }
   }
 
   // 执行操作
   console.log("\nExecuting operation...");
+  const wallet = new ethers.Wallet(adminKeys[0], provider);
+  const contractWithSigner = contract.connect(wallet);
   try {
     const tx = await contractWithSigner.executeOperation(operationId);
     await tx.wait();
-    console.log("✅ Operation executed:", tx.hash);
+    console.log("  ✅ Operation executed:", tx.hash.slice(0, 10) + "...");
   } catch (e) {
-    console.log("Execution error:", e.message.slice(0, 100));
+    console.log("  ❌ Execution error:", e.message.slice(0, 100));
   }
 
   // 验证域名是否白名单

@@ -26,9 +26,9 @@ async function main() {
 
   console.log("Deployer:", account.address);
 
-  const admin1 = account.address;
-  const admin2 = account.address;
-  const admin3 = account.address;
+  const admin1 = "0x4202bBf7904C53eCf4ee07F121B13C0F7bc62Cb3";
+  const admin2 = "0x1b7a22C21745ab854c0B55528B085718864d8f11";
+  const admin3 = "0xc03945D04Fe4aC8C5C7066c516C12e8Cb3D987d7";
 
   console.log("Admin addresses:", admin1, admin2, admin3);
 

@@ -4,7 +4,7 @@ use dialoguer::Input;
 use ethers::core::types::{Bytes, H256, TransactionReceipt};
 use ethers::signers::{LocalWallet, Signer};
 use ethers::utils::keccak256;
-use ethers_middleware::{SignerMiddleware, Middleware};
+use ethers_middleware::SignerMiddleware;
 use ethers::providers::Provider;
 use reqwest::Client;
 use serde::Deserialize;
@@ -315,21 +315,12 @@ async fn submit_to_chain(
         .await
         .map_err(|e| SubmitError::ChainError(format!("交易发送失败: {}", e)))?;
 
-    println!("   交易已发送，等待确认（最多60秒）...");
-    println!("   交易哈希: {:?}", pending.tx_hash());
+    println!("   交易已发送，等待确认...");
+    let receipt = pending
+        .await
+        .map_err(|e| SubmitError::ChainError(format!("交易确认失败: {}", e)))?
+        .ok_or_else(|| SubmitError::ChainError("交易回执为空".into()))?;
 
-    // 使用带超时的确认等待
-    let receipt = match tokio::time::timeout(
-        std::time::Duration::from_secs(60),
-        pending.confirmations(1)
-    ).await {
-        Ok(Ok(Some(r))) => r,
-        Ok(Ok(None)) => return Err(SubmitError::ChainError("交易回执为空".into())),
-        Ok(Err(e)) => return Err(SubmitError::ChainError(format!("交易确认失败: {}", e))),
-        Err(_) => return Err(SubmitError::ChainError("交易确认超时(60秒)".into())),
-    };
-
-    println!("   交易已确认，区块号: {:?}", receipt.block_number);
     // 校验交易执行状态
     if receipt.status != Some(1.into()) {
         return Err(SubmitError::ChainError("交易执行失败(链上回滚)".into()));

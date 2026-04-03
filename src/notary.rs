@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use thiserror::Error;
+use k256::ecdsa::signature::Signer;
 
 // 类型别名，避免与 native-tls 的 TlsError 冲突
 type TlsnErr = TlsnError;
@@ -127,18 +128,36 @@ pub fn create_tls_proof(
     prompt: &str,
     response: &str,
 ) -> Result<Vec<u8>, TlsnErr> {
+    // 尝试加载签名密钥，如果没有则使用模拟签名（向后兼容）
+    let signing_key = match load_signing_key() {
+        Ok(key) => Some(key),
+        Err(e) => {
+            println!("   ⚠️  未配置 NOTARY_PRIVATE_KEY，使用模拟签名: {}", e);
+            None
+        }
+    };
+
     // 直接在当前线程中建立 TLS 连接（阻塞操作）
     let tls_info = match establish_tls_connection(domain, 443) {
         Ok(info) => info,
         Err(e) => {
             println!("   ⚠️  TLS连接失败，使用备用方法: {}", e);
-            // 如果 TLS 连接失败，使用备用方法
-            return Ok(create_fallback_proof(domain, prompt, response));
+            // 如果 TLS 连接失败，使用备用方法（也支持真实签名）
+            return Ok(if signing_key.is_some() {
+                create_fallback_proof_with_real_signature(domain, prompt, response, &signing_key.unwrap())
+            } else {
+                create_fallback_proof(domain, prompt, response)
+            });
         }
     };
 
-    // 生成证明
-    let proof = build_proof_from_tls(&tls_info, prompt, response)?;
+    // 根据是否有密钥选择签名方式
+    let proof = if let Some(ref key) = signing_key {
+        build_proof_from_tls_with_real_signature(&tls_info, prompt, response, key)?
+    } else {
+        build_proof_from_tls(&tls_info, prompt, response)?
+    };
+
     serialize_proof(&proof)
 }
 
@@ -194,6 +213,73 @@ fn build_proof_from_tls(
         },
         timestamp,
         session_id: tls_info.handshake_hash, // 复用 handshake hash 作为 session_id
+        client_hello_hash: hello_arr,
+        server_certificate: tls_info.server_certificate.clone(),
+        server_public_key_hash: tls_info.server_pubkey_hash,
+        handshake_transcript_hash: tls_info.handshake_hash,
+        application_data_hash: app_arr,
+        client_random: tls_info.client_random,
+        server_random: tls_info.server_random,
+        notary_signature: signature,
+        notary_pubkey,
+    })
+}
+
+/// 使用真实签名构建证明
+fn build_proof_from_tls_with_real_signature(
+    tls_info: &TlsConnectionInfo,
+    prompt: &str,
+    response: &str,
+    signing_key: &k256::ecdsa::SigningKey,
+) -> Result<TlsnProof, TlsnErr> {
+    use ethers::utils::keccak256;
+    use k256::ecdsa::Signature as EcdsaSignature;
+    use k256::ecdsa::VerifyingKey;
+    use k256::ecdsa::signature::Signer;
+
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+
+    // 计算应用数据哈希
+    let app_data = format!("{}|{}", prompt, response);
+    let app_hash = keccak256(app_data.as_bytes());
+    let mut app_arr = [0u8; 32];
+    app_arr.copy_from_slice(&app_hash);
+
+    // 计算 ClientHello 哈希
+    let hello_data = format!("CLIENT_HELLO|{}|{:?}", tls_info.domain, tls_info.client_random);
+    let hello_hash = keccak256(hello_data.as_bytes());
+    let mut hello_arr = [0u8; 32];
+    hello_arr.copy_from_slice(&hello_hash);
+
+    // 生成签名数据: keccak256(handshake_hash || app_hash || timestamp)
+    let mut sig_data = Vec::new();
+    sig_data.extend_from_slice(&tls_info.handshake_hash);
+    sig_data.extend_from_slice(&app_arr);
+    sig_data.extend_from_slice(&timestamp.to_be_bytes());
+
+    // ECDSA 签名 (k256 0.13+ 用法)
+    let sig: EcdsaSignature = signing_key.sign(&sig_data);
+    let mut signature = sig.to_bytes().to_vec();
+    signature.push(27); // 添加 v 值 (EIP-155)
+
+    // 计算 notary 公钥 (取公钥哈希的后20字节)
+    let verifying_key = VerifyingKey::from(signing_key);
+    let pubkey_hash = keccak256(&verifying_key.to_encoded_point(false).as_bytes()[1..]);
+    let mut notary_pubkey = [0u8; 20];
+    notary_pubkey.copy_from_slice(&pubkey_hash[12..32]);
+
+    Ok(TlsnProof {
+        proof_type: {
+            let mut arr = [0u8; 32];
+            let bytes = b"TLSN_PROOF_V1";
+            arr[..bytes.len()].copy_from_slice(bytes);
+            arr
+        },
+        timestamp,
+        session_id: tls_info.handshake_hash,
         client_hello_hash: hello_arr,
         server_certificate: tls_info.server_certificate.clone(),
         server_public_key_hash: tls_info.server_pubkey_hash,
@@ -337,6 +423,92 @@ fn create_fallback_proof(domain: &str, prompt: &str, response: &str) -> Vec<u8> 
     serialize_proof(&proof).unwrap_or_default()
 }
 
+/// 备用证明生成（当 TLS 连接失败时）- 使用真实签名
+fn create_fallback_proof_with_real_signature(
+    domain: &str,
+    prompt: &str,
+    response: &str,
+    signing_key: &k256::ecdsa::SigningKey,
+) -> Vec<u8> {
+    use ethers::utils::keccak256;
+    use k256::ecdsa::Signature as EcdsaSignature;
+    use k256::ecdsa::VerifyingKey;
+    use k256::ecdsa::signature::Signer;
+
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+
+    let session_data = format!("{}|{}|{}", domain, prompt, timestamp);
+    let session_id = keccak256(session_data.as_bytes());
+    let mut session_arr = [0u8; 32];
+    session_arr.copy_from_slice(&session_id);
+
+    let hello_data = format!("CLIENT_HELLO|{}", domain);
+    let client_hello_hash = keccak256(hello_data.as_bytes());
+    let mut hello_arr = [0u8; 32];
+    hello_arr.copy_from_slice(&client_hello_hash);
+
+    let app_data = format!("{}|{}", prompt, response);
+    let app_hash = keccak256(app_data.as_bytes());
+    let mut app_arr = [0u8; 32];
+    app_arr.copy_from_slice(&app_hash);
+
+    let cert_data = format!("CERTIFICATE_FOR_{}", domain);
+    let cert = cert_data.into_bytes();
+    let pubkey_hash = keccak256(cert.as_slice());
+    let mut pubkey_arr = [0u8; 32];
+    pubkey_arr.copy_from_slice(&pubkey_hash);
+
+    let mut rand1 = [0u8; 32];
+    let mut rand2 = [0u8; 32];
+    rand1.copy_from_slice(&keccak256(b"client_random"));
+    rand2.copy_from_slice(&keccak256(b"server_random"));
+
+    let handshake_hash = keccak256(format!("{}|{}|", prompt, response).as_bytes());
+    let mut handshake_arr = [0u8; 32];
+    handshake_arr.copy_from_slice(&handshake_hash);
+
+    // 使用真实签名
+    let mut sig_data = Vec::new();
+    sig_data.extend_from_slice(&handshake_arr);
+    sig_data.extend_from_slice(&app_arr);
+    sig_data.extend_from_slice(&timestamp.to_be_bytes());
+
+    let sig: EcdsaSignature = signing_key.sign(&sig_data);
+    let mut signature = sig.to_bytes().to_vec();
+    signature.push(27); // v 值
+
+    // 计算 notary 公钥
+    let verifying_key = VerifyingKey::from(signing_key);
+    let notary_pubkey_hash = keccak256(&verifying_key.to_encoded_point(false).as_bytes()[1..]);
+    let mut notary_pubkey = [0u8; 20];
+    notary_pubkey.copy_from_slice(&notary_pubkey_hash[12..32]);
+
+    let proof = TlsnProof {
+        proof_type: {
+            let mut arr = [0u8; 32];
+            let bytes = b"TLSN_PROOF_V1";
+            arr[..bytes.len()].copy_from_slice(bytes);
+            arr
+        },
+        timestamp,
+        session_id: session_arr,
+        client_hello_hash: hello_arr,
+        server_certificate: cert,
+        server_public_key_hash: pubkey_arr,
+        handshake_transcript_hash: handshake_arr,
+        application_data_hash: app_arr,
+        client_random: rand1,
+        server_random: rand2,
+        notary_signature: signature,
+        notary_pubkey,
+    };
+
+    serialize_proof(&proof).unwrap_or_default()
+}
+
 // 辅助函数
 
 fn generate_random() -> [u8; 32] {
@@ -431,4 +603,24 @@ pub fn create_simple_proof(
             create_fallback_proof(domain, prompt, response)
         }
     }
+}
+
+/// 从环境变量加载 Notary 签名密钥
+pub fn load_signing_key() -> Result<k256::ecdsa::SigningKey, TlsnErr> {
+    use k256::ecdsa::SigningKey;
+
+    let key_hex = std::env::var("NOTARY_PRIVATE_KEY")
+        .map_err(|_| TlsnError::ConfigError("NOTARY_PRIVATE_KEY not set".to_string()))?;
+
+    let key_bytes = hex::decode(key_hex)
+        .map_err(|e| TlsnError::ConfigError(format!("Invalid key hex: {}", e)))?;
+
+    // k256 0.13+ 正确用法
+    let key_array: [u8; 32] = key_bytes.try_into()
+        .map_err(|_| TlsnError::ConfigError("Key must be 32 bytes".to_string()))?;
+
+    let signing_key = SigningKey::from_bytes(&key_array.into())
+        .map_err(|_| TlsnError::ConfigError("Invalid key".to_string()))?;
+
+    Ok(signing_key)
 }

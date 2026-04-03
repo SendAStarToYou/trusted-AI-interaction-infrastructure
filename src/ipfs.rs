@@ -14,7 +14,7 @@ pub enum IpfsError {
     ApiError(String),
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct IpfsData {
     pub prompt_header: String,
     pub full_prompt: String,
@@ -23,6 +23,10 @@ pub struct IpfsData {
     pub tlsn_proof: String,
     pub uploader: String,
     pub timestamp: u64,
+    
+    // 新增字段：完整 TLSN 证明材料 (hex 编码)
+    pub attestation: String,
+    pub presentation: String,
 }
 
 #[derive(Debug, Deserialize)]

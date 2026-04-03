@@ -22,6 +22,7 @@
   },
   "dependencies": {
     "@nomicfoundation/hardhat-ethers": "^4.0.6",
+    "@thehubbleproject/bls": "^0.5.1",
     "dotenv": "^17.3.1",
     "ethers": "^6.16.0"
   }
